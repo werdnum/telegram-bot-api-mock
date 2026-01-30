@@ -330,3 +330,297 @@ class TestClientGetUpdatesHistory:
         # Second update should be the command
         assert data["result"][1]["message"]["text"] == "/start"
         assert data["result"][1]["message"]["entities"][0]["type"] == "bot_command"
+
+
+class TestClientSendPhoto:
+    """Tests for the client sendPhoto endpoint."""
+
+    def test_send_photo_creates_update_with_photo(self, client: TestClient):
+        """Test that sendPhoto creates an update with photo data."""
+        import base64
+
+        # Create a simple test image (1x1 pixel PNG)
+        png_data = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+        photo_b64 = base64.b64encode(png_data).decode()
+
+        response = client.post(
+            "/client/sendPhoto",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "photo": photo_b64,
+                "caption": "Test photo",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"]["update_id"] == 1
+        assert data["result"]["message"]["chat"]["id"] == 100
+        # Should have photo data
+        assert data["result"]["message"]["photo"] is not None
+        assert len(data["result"]["message"]["photo"]) == 3  # 3 sizes
+        # Caption should be in text field
+        assert data["result"]["message"]["text"] == "Test photo"
+
+    def test_send_photo_available_via_get_updates(self, client: TestClient):
+        """Test that photo updates are available via bot getUpdates."""
+        import base64
+
+        png_data = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+        photo_b64 = base64.b64encode(png_data).decode()
+
+        client.post(
+            "/client/sendPhoto",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "photo": photo_b64,
+            },
+        )
+
+        response = client.get(f"/bot{TEST_TOKEN}/getUpdates")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["result"]) == 1
+        assert data["result"][0]["message"]["photo"] is not None
+
+    def test_send_photo_file_downloadable(self, client: TestClient):
+        """Test that the photo can be downloaded via getMedia."""
+        import base64
+
+        png_data = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+        photo_b64 = base64.b64encode(png_data).decode()
+
+        response = client.post(
+            "/client/sendPhoto",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "photo": photo_b64,
+            },
+        )
+
+        photo_sizes = response.json()["result"]["message"]["photo"]
+        file_id = photo_sizes[0]["file_id"]
+
+        # Download the file
+        download_response = client.get(f"/client/getMedia/{file_id}")
+        assert download_response.status_code == 200
+        assert download_response.content == png_data
+
+    def test_send_photo_invalid_base64_returns_error(self, client: TestClient):
+        """Test that invalid base64 returns an error."""
+        response = client.post(
+            "/client/sendPhoto",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "photo": "not-valid-base64!!!",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is False
+        assert data["error_code"] == 400
+        assert "invalid base64" in data["description"]
+
+
+class TestClientSendVideo:
+    """Tests for the client sendVideo endpoint."""
+
+    def test_send_video_creates_update_with_video(self, client: TestClient):
+        """Test that sendVideo creates an update with video data."""
+        import base64
+
+        video_data = b"fake video content"
+        video_b64 = base64.b64encode(video_data).decode()
+
+        response = client.post(
+            "/client/sendVideo",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "video": video_b64,
+                "caption": "Test video",
+                "width": 1920,
+                "height": 1080,
+                "duration": 60,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"]["message"]["video"] is not None
+        assert data["result"]["message"]["video"]["width"] == 1920
+        assert data["result"]["message"]["video"]["height"] == 1080
+        assert data["result"]["message"]["video"]["duration"] == 60
+        assert data["result"]["message"]["text"] == "Test video"
+
+    def test_send_video_downloadable(self, client: TestClient):
+        """Test that the video can be downloaded."""
+        import base64
+
+        video_data = b"fake video content"
+        video_b64 = base64.b64encode(video_data).decode()
+
+        response = client.post(
+            "/client/sendVideo",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "video": video_b64,
+            },
+        )
+
+        file_id = response.json()["result"]["message"]["video"]["file_id"]
+        download_response = client.get(f"/client/getMedia/{file_id}")
+        assert download_response.status_code == 200
+        assert download_response.content == video_data
+
+
+class TestClientSendAudio:
+    """Tests for the client sendAudio endpoint."""
+
+    def test_send_audio_creates_update_with_audio(self, client: TestClient):
+        """Test that sendAudio creates an update with audio data."""
+        import base64
+
+        audio_data = b"fake audio content"
+        audio_b64 = base64.b64encode(audio_data).decode()
+
+        response = client.post(
+            "/client/sendAudio",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "audio": audio_b64,
+                "caption": "Test audio",
+                "duration": 180,
+                "performer": "Test Artist",
+                "title": "Test Song",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"]["message"]["audio"] is not None
+        assert data["result"]["message"]["audio"]["duration"] == 180
+        assert data["result"]["message"]["audio"]["performer"] == "Test Artist"
+        assert data["result"]["message"]["audio"]["title"] == "Test Song"
+        assert data["result"]["message"]["text"] == "Test audio"
+
+    def test_send_audio_downloadable(self, client: TestClient):
+        """Test that the audio can be downloaded."""
+        import base64
+
+        audio_data = b"fake audio content"
+        audio_b64 = base64.b64encode(audio_data).decode()
+
+        response = client.post(
+            "/client/sendAudio",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "audio": audio_b64,
+            },
+        )
+
+        file_id = response.json()["result"]["message"]["audio"]["file_id"]
+        download_response = client.get(f"/client/getMedia/{file_id}")
+        assert download_response.status_code == 200
+        assert download_response.content == audio_data
+
+
+class TestClientSendDocument:
+    """Tests for the client sendDocument endpoint."""
+
+    def test_send_document_creates_update_with_document(self, client: TestClient):
+        """Test that sendDocument creates an update with document data."""
+        import base64
+
+        doc_data = b"Hello, this is a test document!"
+        doc_b64 = base64.b64encode(doc_data).decode()
+
+        response = client.post(
+            "/client/sendDocument",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "document": doc_b64,
+                "filename": "test.txt",
+                "mime_type": "text/plain",
+                "caption": "Test document",
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"]["message"]["document"] is not None
+        assert data["result"]["message"]["document"]["file_name"] == "test.txt"
+        assert data["result"]["message"]["document"]["mime_type"] == "text/plain"
+        assert data["result"]["message"]["document"]["file_size"] == len(doc_data)
+        assert data["result"]["message"]["text"] == "Test document"
+
+    def test_send_document_downloadable(self, client: TestClient):
+        """Test that the document can be downloaded."""
+        import base64
+
+        doc_data = b"Document content for download test"
+        doc_b64 = base64.b64encode(doc_data).decode()
+
+        response = client.post(
+            "/client/sendDocument",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "document": doc_b64,
+                "filename": "download_test.txt",
+            },
+        )
+
+        file_id = response.json()["result"]["message"]["document"]["file_id"]
+        download_response = client.get(f"/client/getMedia/{file_id}")
+        assert download_response.status_code == 200
+        assert download_response.content == doc_data
+
+    def test_send_document_with_custom_user(self, client: TestClient):
+        """Test sendDocument with a custom from_user."""
+        import base64
+
+        doc_data = b"Document from custom user"
+        doc_b64 = base64.b64encode(doc_data).decode()
+
+        response = client.post(
+            "/client/sendDocument",
+            json={
+                "bot_token": TEST_TOKEN,
+                "chat_id": 100,
+                "document": doc_b64,
+                "filename": "custom.txt",
+                "from_user": {
+                    "id": 999,
+                    "is_bot": False,
+                    "first_name": "Document",
+                    "last_name": "Sender",
+                },
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"]["message"]["from"]["id"] == 999
+        assert data["result"]["message"]["from"]["first_name"] == "Document"
