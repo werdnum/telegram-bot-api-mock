@@ -208,3 +208,62 @@ class ClientSendCallbackRequest(BaseModel):
     message_id: int
     callback_data: str
     from_user: ClientUserDict | None = None
+
+
+class ClientSendPhotoRequest(BaseModel):
+    """Request model for client sendPhoto endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    bot_token: str
+    chat_id: int
+    photo: str  # Base64-encoded photo content
+    filename: str | None = None
+    caption: str | None = None
+    from_user: ClientUserDict | None = None
+
+
+class ClientSendVideoRequest(BaseModel):
+    """Request model for client sendVideo endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    bot_token: str
+    chat_id: int
+    video: str  # Base64-encoded video content
+    filename: str | None = None
+    caption: str | None = None
+    width: int | None = None
+    height: int | None = None
+    duration: int | None = None
+    from_user: ClientUserDict | None = None
+
+
+class ClientSendAudioRequest(BaseModel):
+    """Request model for client sendAudio endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    bot_token: str
+    chat_id: int
+    audio: str  # Base64-encoded audio content
+    filename: str | None = None
+    caption: str | None = None
+    duration: int | None = None
+    performer: str | None = None
+    title: str | None = None
+    from_user: ClientUserDict | None = None
+
+
+class ClientSendDocumentRequest(BaseModel):
+    """Request model for client sendDocument endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    bot_token: str
+    chat_id: int
+    document: str  # Base64-encoded document content
+    filename: str
+    mime_type: str | None = None
+    caption: str | None = None
+    from_user: ClientUserDict | None = None
