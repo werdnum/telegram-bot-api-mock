@@ -55,6 +55,9 @@ class ASGIRequest(BaseRequest):
         pool_timeout: ODVInput[float] = DEFAULT_NONE,
     ) -> tuple[int, bytes]:
         """Perform the actual HTTP request via ASGI transport."""
+        # Timeout parameters are part of the BaseRequest interface but not used by ASGI transport
+        del read_timeout, write_timeout, connect_timeout, pool_timeout
+
         if self._client is None:
             raise RuntimeError("ASGIRequest is not initialized!")
 

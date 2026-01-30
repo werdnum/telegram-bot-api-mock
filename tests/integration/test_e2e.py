@@ -39,6 +39,7 @@ class TestE2EPolling:
         updates = await bot.get_updates()
         assert len(updates) == 1
         assert updates[0].update_id == update_id
+        assert updates[0].message is not None
         assert updates[0].message.text == "Hello, bot!"
         user_chat_id = updates[0].message.chat.id
 
@@ -77,6 +78,8 @@ class TestE2EPolling:
         # Step 2: Bot fetches and processes the command using PTB
         updates = await bot.get_updates()
         assert len(updates) == 1
+        assert updates[0].message is not None
+        assert updates[0].message.entities is not None
         assert updates[0].message.entities[0].type == "bot_command"
 
         # Step 3: Bot responds with an inline keyboard using PTB
@@ -181,6 +184,8 @@ class TestE2EPolling:
 
         # Bot responds to each user using PTB
         for update in updates:
+            assert update.message is not None
+            assert update.message.from_user is not None
             chat_id = update.message.chat.id
             user_name = update.message.from_user.first_name
             await bot.send_message(

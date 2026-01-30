@@ -25,6 +25,7 @@ class TestSendPhoto:
 
         assert message.message_id == 1
         assert message.chat.id == 100
+        assert message.from_user is not None
         assert message.from_user.id == 123456789
         assert message.from_user.is_bot is True
 
@@ -232,6 +233,7 @@ class TestGetFile:
         doc_data.name = "test.txt"
 
         message = await bot.send_document(chat_id=100, document=doc_data)
+        assert message.document is not None
         file_id = message.document.file_id
 
         # Now get the file info using raw client
@@ -278,6 +280,7 @@ class TestClientGetMedia:
         doc_data.name = "download_test.txt"
 
         message = await bot.send_document(chat_id=100, document=doc_data)
+        assert message.document is not None
         file_id = message.document.file_id
 
         # Now download the file using client endpoint

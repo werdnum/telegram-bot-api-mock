@@ -1,7 +1,7 @@
 """Integration tests for bot message API endpoints using python-telegram-bot."""
 
 import pytest
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.error import BadRequest
 
 
@@ -16,6 +16,7 @@ class TestSendMessage:
         assert message.message_id == 1
         assert message.text == "Hello, World!"
         assert message.chat.id == 100
+        assert message.from_user is not None
         assert message.from_user.id == 123456789
         assert message.from_user.is_bot is True
 
@@ -80,6 +81,7 @@ class TestEditMessageText:
             message_id=original.message_id,
         )
 
+        assert isinstance(edited, Message)
         assert edited.text == "Updated text"
         assert edited.edit_date is not None
 
