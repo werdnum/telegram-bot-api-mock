@@ -1,0 +1,79 @@
+[project]
+name = "telegram-bot-api-mock"
+version = "0.1.0"
+description = "A mock server for testing Telegram bots"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [
+    { name = "werdnum" }
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.28.0",
+    "python-multipart>=0.0.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-httpx>=0.34.0",
+    "ruff>=0.8.0",
+    "ty>=0.0.1a7",
+    "pre-commit>=4.0.0",
+    "poethepoet>=0.32.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/telegram_bot_api_mock"]
+
+[tool.poe.tasks]
+lint-check = "ruff check --fix src tests"
+lint-format = "ruff format src tests"
+lint = ["lint-check", "lint-format"]
+typecheck = "ty check src tests"
+test-only = "pytest"
+test = ["lint", "typecheck", "test-only"]
+serve = "uvicorn telegram_bot_api_mock.app:app --reload"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults (needed for FastAPI Depends)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["telegram_bot_api_mock"]
+
+[tool.ty.environment]
+python-version = "3.13"
