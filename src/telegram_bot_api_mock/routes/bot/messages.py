@@ -1,8 +1,10 @@
 """Bot API message routes."""
 
+import json
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Path
+from fastapi.responses import JSONResponse
 
 from telegram_bot_api_mock.dependencies import get_state
 from telegram_bot_api_mock.models import (
@@ -20,6 +22,46 @@ from telegram_bot_api_mock.state import ServerState
 router = APIRouter()
 
 
+def error_response(error_code: int, description: str) -> JSONResponse:
+    """Create an error response with the appropriate HTTP status code.
+
+    Args:
+        error_code: The Telegram error code (also used as HTTP status code).
+        description: The error description.
+
+    Returns:
+        JSONResponse with the error details and appropriate HTTP status code.
+    """
+    return JSONResponse(
+        status_code=error_code,
+        content={
+            "ok": False,
+            "error_code": error_code,
+            "description": description,
+        },
+    )
+
+
+def parse_reply_parameters(reply_parameters: str | None) -> int | None:
+    """Parse reply_parameters JSON string to extract message_id.
+
+    Args:
+        reply_parameters: JSON string like '{"message_id": 123}'
+
+    Returns:
+        The message_id if found, None otherwise.
+    """
+    if not reply_parameters:
+        return None
+    try:
+        data = json.loads(reply_parameters)
+        if isinstance(data, dict) and "message_id" in data:
+            return int(data["message_id"])
+    except (json.JSONDecodeError, ValueError, TypeError):
+        pass
+    return None
+
+
 @router.post("/bot{token}/sendMessage")
 async def send_message(
     token: Annotated[str, Path()],
@@ -28,6 +70,7 @@ async def send_message(
     text: Annotated[str, Form()],
     parse_mode: Annotated[str | None, Form()] = None,
     reply_to_message_id: Annotated[int | None, Form()] = None,
+    reply_parameters: Annotated[str | None, Form()] = None,
     reply_markup: Annotated[str | None, Form()] = None,
 ) -> TelegramResponse[Message]:
     """Send a message to a chat.
@@ -38,7 +81,8 @@ async def send_message(
         chat_id: The chat ID to send the message to.
         text: The message text.
         parse_mode: Optional parse mode.
-        reply_to_message_id: Optional message ID to reply to.
+        reply_to_message_id: Optional message ID to reply to (legacy).
+        reply_parameters: Optional JSON-encoded reply parameters (new API format).
         reply_markup: Optional JSON-encoded reply markup.
 
     Returns:
@@ -57,13 +101,18 @@ async def send_message(
             # since that's what the Message model supports
             parsed_markup = None
 
+    # Handle both legacy reply_to_message_id and new reply_parameters format
+    actual_reply_to_message_id = reply_to_message_id
+    if actual_reply_to_message_id is None and reply_parameters:
+        actual_reply_to_message_id = parse_reply_parameters(reply_parameters)
+
     message = await message_service.create_message(
         state=state,
         bot_token=token,
         chat_id=chat_id,
         text=text,
         parse_mode=parse_mode,
-        reply_to_message_id=reply_to_message_id,
+        reply_to_message_id=actual_reply_to_message_id,
         reply_markup=parsed_markup,
     )
 
@@ -104,7 +153,7 @@ async def send_message_json(
     return TelegramResponse(ok=True, result=message)
 
 
-@router.post("/bot{token}/editMessageText")
+@router.post("/bot{token}/editMessageText", response_model=None)
 async def edit_message_text(
     token: Annotated[str, Path()],
     state: Annotated[ServerState, Depends(get_state)],
@@ -112,7 +161,7 @@ async def edit_message_text(
     chat_id: Annotated[int | str | None, Form()] = None,
     message_id: Annotated[int | None, Form()] = None,
     reply_markup: Annotated[str | None, Form()] = None,
-) -> TelegramResponse[Message | bool]:
+) -> TelegramResponse[Message | bool] | JSONResponse:
     """Edit a message text.
 
     Args:
@@ -127,11 +176,7 @@ async def edit_message_text(
         TelegramResponse containing the edited message or True.
     """
     if chat_id is None or message_id is None:
-        return TelegramResponse(
-            ok=False,
-            error_code=400,
-            description="Bad Request: chat_id and message_id are required",
-        )
+        return error_response(400, "Bad Request: chat_id and message_id are required")
 
     # Parse chat_id to int if it's a string
     if isinstance(chat_id, str):
@@ -154,28 +199,20 @@ async def edit_message_text(
     )
 
     if message is None:
-        return TelegramResponse(
-            ok=False,
-            error_code=400,
-            description="Bad Request: message not found",
-        )
+        return error_response(400, "Bad Request: message not found")
 
     return TelegramResponse(ok=True, result=message)
 
 
-@router.post("/bot{token}/editMessageText", include_in_schema=False)
+@router.post("/bot{token}/editMessageText", include_in_schema=False, response_model=None)
 async def edit_message_text_json(
     token: Annotated[str, Path()],
     state: Annotated[ServerState, Depends(get_state)],
     request: EditMessageTextRequest,
-) -> TelegramResponse[Message | bool]:
+) -> TelegramResponse[Message | bool] | JSONResponse:
     """Edit a message text (JSON body version)."""
     if request.chat_id is None or request.message_id is None:
-        return TelegramResponse(
-            ok=False,
-            error_code=400,
-            description="Bad Request: chat_id and message_id are required",
-        )
+        return error_response(400, "Bad Request: chat_id and message_id are required")
 
     # Parse chat_id to int if it's a string
     chat_id = request.chat_id
@@ -192,22 +229,18 @@ async def edit_message_text_json(
     )
 
     if message is None:
-        return TelegramResponse(
-            ok=False,
-            error_code=400,
-            description="Bad Request: message not found",
-        )
+        return error_response(400, "Bad Request: message not found")
 
     return TelegramResponse(ok=True, result=message)
 
 
-@router.post("/bot{token}/deleteMessage")
+@router.post("/bot{token}/deleteMessage", response_model=None)
 async def delete_message(
     token: Annotated[str, Path()],
     state: Annotated[ServerState, Depends(get_state)],
     chat_id: Annotated[int | str, Form()],
     message_id: Annotated[int, Form()],
-) -> TelegramResponse[bool]:
+) -> TelegramResponse[bool] | JSONResponse:
     """Delete a message.
 
     Args:
@@ -231,21 +264,17 @@ async def delete_message(
     )
 
     if not result:
-        return TelegramResponse(
-            ok=False,
-            error_code=400,
-            description="Bad Request: message not found",
-        )
+        return error_response(400, "Bad Request: message not found")
 
     return TelegramResponse(ok=True, result=True)
 
 
-@router.post("/bot{token}/deleteMessage", include_in_schema=False)
+@router.post("/bot{token}/deleteMessage", include_in_schema=False, response_model=None)
 async def delete_message_json(
     token: Annotated[str, Path()],
     state: Annotated[ServerState, Depends(get_state)],
     request: DeleteMessageRequest,
-) -> TelegramResponse[bool]:
+) -> TelegramResponse[bool] | JSONResponse:
     """Delete a message (JSON body version)."""
     # Parse chat_id to int if it's a string
     chat_id = request.chat_id
@@ -260,10 +289,6 @@ async def delete_message_json(
     )
 
     if not result:
-        return TelegramResponse(
-            ok=False,
-            error_code=400,
-            description="Bad Request: message not found",
-        )
+        return error_response(400, "Bad Request: message not found")
 
     return TelegramResponse(ok=True, result=True)
