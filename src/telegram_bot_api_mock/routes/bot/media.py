@@ -4,7 +4,7 @@ import json
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Path, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Path, Query, Request, UploadFile
 from fastapi.responses import Response
 
 from telegram_bot_api_mock.dependencies import get_state
@@ -15,7 +15,7 @@ from telegram_bot_api_mock.models import (
     TelegramResponse,
 )
 from telegram_bot_api_mock.models.media_types import File as TelegramFile
-from telegram_bot_api_mock.models.request_models import parse_reply_markup
+from telegram_bot_api_mock.models.request_models import GetFileRequest, parse_reply_markup
 from telegram_bot_api_mock.services import media_service
 from telegram_bot_api_mock.state import ServerState
 
@@ -481,23 +481,12 @@ async def send_media_group(
     return TelegramResponse(ok=True, result=messages)
 
 
-@router.get("/bot{token}/getFile")
-@router.post("/bot{token}/getFile")
-async def get_file(
-    token: Annotated[str, Path()],
-    state: Annotated[ServerState, Depends(get_state)],
+async def _get_file_impl(
+    token: str,
+    state: ServerState,
     file_id: str,
 ) -> TelegramResponse[TelegramFile]:
-    """Get information about a file and prepare it for downloading.
-
-    Args:
-        token: The bot token.
-        state: The server state.
-        file_id: The file identifier to get info about.
-
-    Returns:
-        TelegramResponse containing the File object.
-    """
+    """Implementation of getFile logic."""
     # Try to get the file from storage
     file_data = media_service.get_media(state, file_id)
 
@@ -508,7 +497,7 @@ async def get_file(
             description="Bad Request: file not found",
         )
 
-    content, filename, mime_type = file_data
+    content, filename, _mime_type = file_data
 
     # Generate file_unique_id
     file_unique_id = media_service._generate_file_unique_id(file_id)
@@ -524,6 +513,53 @@ async def get_file(
     )
 
     return TelegramResponse(ok=True, result=telegram_file)
+
+
+@router.get("/bot{token}/getFile")
+@router.post("/bot{token}/getFile")
+async def get_file(
+    token: Annotated[str, Path()],
+    request: Request,
+    state: Annotated[ServerState, Depends(get_state)],
+    file_id: Annotated[str | None, Query()] = None,
+) -> TelegramResponse[TelegramFile]:
+    """Get information about a file and prepare it for downloading.
+
+    Args:
+        token: The bot token.
+        request: The incoming request.
+        state: The server state.
+        file_id: The file identifier to get info about (from query).
+
+    Returns:
+        TelegramResponse containing the File object.
+    """
+    actual_file_id = file_id
+
+    # If not in query, try to get from body (JSON or Form)
+    if not actual_file_id and request.method == "POST":
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                body = await request.json()
+                actual_file_id = body.get("file_id")
+            except Exception:
+                pass
+        elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+            try:
+                form = await request.form()
+                actual_file_id = form.get("file_id")
+            except Exception:
+                pass
+
+    if not actual_file_id:
+        return TelegramResponse(
+            ok=False,
+            error_code=400,
+            description="Bad Request: file_id is required",
+        )
+
+    return await _get_file_impl(token, state, actual_file_id)
 
 
 @router.get("/file/bot{token}/{file_path:path}")

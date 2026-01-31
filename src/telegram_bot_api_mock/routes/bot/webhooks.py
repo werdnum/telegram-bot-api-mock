@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form
+from fastapi import APIRouter, Depends, Form, Request
 
 from telegram_bot_api_mock.dependencies import get_state
-from telegram_bot_api_mock.models import TelegramResponse
+from telegram_bot_api_mock.models import SetWebhookRequest, TelegramResponse
 from telegram_bot_api_mock.services import webhook_service
 from telegram_bot_api_mock.state import ServerState
 
@@ -17,7 +17,8 @@ router = APIRouter()
 @router.post("/bot{token}/setWebhook", response_model=TelegramResponse[bool])
 async def set_webhook(
     token: str,
-    url: str = Form(...),
+    request: Request,
+    url: str | None = Form(None),
     certificate: str | None = Form(None),  # noqa: ARG001
     ip_address: str | None = Form(None),
     max_connections: int = Form(40),
@@ -26,31 +27,44 @@ async def set_webhook(
     secret_token: str | None = Form(None),
     state: ServerState = Depends(get_state),
 ) -> TelegramResponse[bool]:
-    """Set a webhook URL for receiving updates.
+    """Set a webhook URL for receiving updates. Supports Form and JSON."""
+    actual_url = url
+    actual_secret_token = secret_token
+    actual_max_connections = max_connections
+    actual_allowed_updates = allowed_updates
+    actual_drop_pending_updates = drop_pending_updates
+    actual_ip_address = ip_address
 
-    Args:
-        token: The bot token from the URL path.
-        url: HTTPS URL to send updates to.
-        certificate: Optional public key certificate.
-        ip_address: Optional fixed IP address.
-        max_connections: Maximum allowed number of simultaneous HTTPS connections.
-        allowed_updates: List of update types to receive.
-        drop_pending_updates: Whether to drop pending updates.
-        secret_token: Secret token for webhook verification.
-        state: The server state (injected).
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            req_model = SetWebhookRequest.model_validate(body)
+            actual_url = req_model.url
+            actual_secret_token = req_model.secret_token
+            actual_max_connections = req_model.max_connections or 40
+            actual_allowed_updates = req_model.allowed_updates
+            actual_drop_pending_updates = req_model.drop_pending_updates or False
+            actual_ip_address = req_model.ip_address
+        except Exception:
+            pass
 
-    Returns:
-        TelegramResponse with True on success.
-    """
+    if not actual_url:
+        return TelegramResponse(
+            ok=False,
+            error_code=400,
+            description="Bad Request: url is required",
+        )
+
     result = await webhook_service.set_webhook(
         state=state,
         bot_token=token,
-        url=url,
-        secret_token=secret_token,
-        max_connections=max_connections,
-        allowed_updates=allowed_updates,
-        drop_pending_updates=drop_pending_updates,
-        ip_address=ip_address,
+        url=actual_url,
+        secret_token=actual_secret_token,
+        max_connections=actual_max_connections,
+        allowed_updates=actual_allowed_updates,
+        drop_pending_updates=actual_drop_pending_updates,
+        ip_address=actual_ip_address,
     )
 
     return TelegramResponse(ok=True, result=result)
@@ -59,23 +73,25 @@ async def set_webhook(
 @router.post("/bot{token}/deleteWebhook", response_model=TelegramResponse[bool])
 async def delete_webhook(
     token: str,
+    request: Request,
     drop_pending_updates: bool = Form(False),
     state: ServerState = Depends(get_state),
 ) -> TelegramResponse[bool]:
-    """Delete the current webhook.
+    """Delete the current webhook. Supports Form and JSON."""
+    actual_drop_pending_updates = drop_pending_updates
 
-    Args:
-        token: The bot token from the URL path.
-        drop_pending_updates: Whether to drop pending updates.
-        state: The server state (injected).
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            actual_drop_pending_updates = body.get("drop_pending_updates", False)
+        except Exception:
+            pass
 
-    Returns:
-        TelegramResponse with True on success.
-    """
     result = await webhook_service.delete_webhook(
         state=state,
         bot_token=token,
-        drop_pending_updates=drop_pending_updates,
+        drop_pending_updates=actual_drop_pending_updates,
     )
 
     return TelegramResponse(ok=True, result=result)

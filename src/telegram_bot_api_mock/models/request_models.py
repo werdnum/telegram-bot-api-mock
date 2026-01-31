@@ -149,6 +149,14 @@ class SendChatActionRequest(BaseModel):
     action: str
 
 
+class GetFileRequest(BaseModel):
+    """Request model for getFile endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_id: str
+
+
 class GetUpdatesRequest(BaseModel):
     """Request model for getUpdates endpoint."""
 
