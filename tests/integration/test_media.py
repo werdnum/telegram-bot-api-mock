@@ -250,6 +250,30 @@ class TestGetFile:
         assert data["result"]["file_size"] == len(doc_content)
         assert data["result"]["file_path"] is not None
 
+    @pytest.mark.asyncio
+    async def test_download_via_file_path(self, client: TestClient, bot: Bot):
+        """Test that file can be downloaded via /file/bot{token}/{file_path}."""
+        # First, send a document to store a file
+        doc_content = b"repro content"
+        doc_data = BytesIO(doc_content)
+        doc_data.name = "repro.txt"
+        message = await bot.send_document(chat_id=100, document=doc_data)
+        file_id = message.document.file_id
+
+        # Get the file path
+        response = client.get(
+            f"/bot{TEST_TOKEN}/getFile",
+            params={"file_id": file_id},
+        )
+        file_path = response.json()["result"]["file_path"]
+
+        # Download via file_path
+        download_url = f"/file/bot{TEST_TOKEN}/{file_path}"
+        download_response = client.get(download_url)
+
+        assert download_response.status_code == 200
+        assert download_response.content == doc_content
+
     def test_get_file_not_found(self, client: TestClient):
         """Test getFile returns error for non-existent file."""
         response = client.get(
