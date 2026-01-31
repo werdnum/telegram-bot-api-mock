@@ -1,5 +1,6 @@
 """Bot API message routes."""
 
+import contextlib
 import json
 from typing import Annotated
 
@@ -62,7 +63,7 @@ def parse_reply_parameters(reply_parameters: str | None) -> int | None:
     return None
 
 
-@router.post("/bot{token}/sendMessage")
+@router.post("/bot{token}/sendMessage", response_model=None)
 async def send_message(
     token: Annotated[str, Path()],
     request: Request,
@@ -73,7 +74,7 @@ async def send_message(
     reply_to_message_id: Annotated[int | None, Form()] = None,
     reply_parameters: Annotated[str | None, Form()] = None,
     reply_markup: Annotated[str | None, Form()] = None,
-) -> TelegramResponse[Message]:
+) -> TelegramResponse[Message] | JSONResponse:
     """Send a message to a chat.
 
     Supports both Form data and JSON body.
@@ -82,7 +83,7 @@ async def send_message(
     actual_text = text
     actual_parse_mode = parse_mode
     actual_reply_to_message_id = reply_to_message_id
-    actual_reply_parameters = reply_parameters
+    actual_reply_parameters_input: str | dict | None = reply_parameters
     actual_reply_markup_input = reply_markup
     entities = None
     parsed_markup = None
@@ -97,6 +98,7 @@ async def send_message(
             actual_text = req_model.text
             actual_parse_mode = req_model.parse_mode
             actual_reply_to_message_id = req_model.reply_to_message_id
+            actual_reply_parameters_input = req_model.reply_parameters
             # Note: SendMessageRequest already parses reply_markup
             if isinstance(req_model.reply_markup, InlineKeyboardMarkup):
                 parsed_markup = req_model.reply_markup
@@ -122,8 +124,15 @@ async def send_message(
     final_chat_id: int = int(actual_chat_id) if isinstance(actual_chat_id, str) else actual_chat_id
 
     # Handle both legacy reply_to_message_id and new reply_parameters format
-    if actual_reply_to_message_id is None and actual_reply_parameters:
-        actual_reply_to_message_id = parse_reply_parameters(actual_reply_parameters)
+    if actual_reply_to_message_id is None and actual_reply_parameters_input:
+        if isinstance(actual_reply_parameters_input, str):
+            actual_reply_to_message_id = parse_reply_parameters(actual_reply_parameters_input)
+        elif (
+            isinstance(actual_reply_parameters_input, dict)
+            and "message_id" in actual_reply_parameters_input
+        ):
+            with contextlib.suppress(ValueError, TypeError):
+                actual_reply_to_message_id = int(actual_reply_parameters_input["message_id"])
 
     message = await message_service.create_message(
         state=state,

@@ -250,6 +250,7 @@ class TestGetFile:
         doc_data = BytesIO(doc_content)
         doc_data.name = "repro.txt"
         message = await bot.send_document(chat_id=100, document=doc_data)
+        assert message.document is not None
         file_id = message.document.file_id
 
         # Get the file path
