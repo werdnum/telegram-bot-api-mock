@@ -212,16 +212,23 @@ def _extract_bot_id_from_token(token: str) -> int:
         The bot user ID extracted from the token.
 
     Raises:
-        ValueError: If the token format is invalid.
+        InvalidTokenError: If the token format is invalid.
     """
+    from telegram_bot_api_mock.exceptions import InvalidTokenError
+
     if ":" not in token:
-        raise ValueError(f"Invalid token format: {token}")
+        raise InvalidTokenError.missing_colon(token)
 
     bot_id_str = token.split(":")[0]
     try:
-        return int(bot_id_str)
-    except ValueError as e:
-        raise ValueError(f"Invalid bot ID in token: {bot_id_str}") from e
+        bot_id = int(bot_id_str)
+    except ValueError:
+        raise InvalidTokenError.invalid_bot_id(bot_id_str, token) from None
+
+    if bot_id <= 0:
+        raise InvalidTokenError.negative_bot_id(bot_id, token)
+
+    return bot_id
 
 
 def _create_bot_user(token: str) -> User:

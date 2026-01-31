@@ -3,6 +3,7 @@
 import pytest
 
 from telegram_bot_api_mock.dependencies import get_bot_state, get_state, reset_state
+from telegram_bot_api_mock.exceptions import InvalidTokenError
 from telegram_bot_api_mock.models import Chat, Message, Update, User
 from telegram_bot_api_mock.state import (
     BotState,
@@ -483,3 +484,64 @@ class TestDependencies:
         await get_bot_state(token, custom_state)
 
         assert token in custom_state.bots
+
+
+class TestInvalidTokenErrors:
+    """Tests for invalid token error handling."""
+
+    @pytest.fixture
+    def server_state(self) -> ServerState:
+        """Create a fresh ServerState for each test."""
+        return ServerState()
+
+    async def test_token_missing_colon_raises_error(self, server_state: ServerState) -> None:
+        """Test that a token without a colon raises InvalidTokenError."""
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await server_state.get_or_create_bot("invalid_token_no_colon")
+
+        assert "colon" in exc_info.value.message.lower()
+        assert "separator" in exc_info.value.message.lower()
+        assert "Expected format" in exc_info.value.message
+
+    async def test_token_non_numeric_bot_id_raises_error(self, server_state: ServerState) -> None:
+        """Test that a token with a non-numeric bot ID raises InvalidTokenError."""
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await server_state.get_or_create_bot("not_a_number:secret")
+
+        assert "must be a positive integer" in exc_info.value.message
+        assert "not_a_number" in exc_info.value.message
+
+    async def test_token_empty_bot_id_raises_error(self, server_state: ServerState) -> None:
+        """Test that a token with an empty bot ID raises InvalidTokenError."""
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await server_state.get_or_create_bot(":secret")
+
+        assert "cannot be empty" in exc_info.value.message
+
+    async def test_token_negative_bot_id_raises_error(self, server_state: ServerState) -> None:
+        """Test that a token with a negative bot ID raises InvalidTokenError."""
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await server_state.get_or_create_bot("-123456789:secret")
+
+        assert "positive integer" in exc_info.value.message
+        assert "-123456789" in exc_info.value.message
+
+    async def test_token_zero_bot_id_raises_error(self, server_state: ServerState) -> None:
+        """Test that a token with zero as bot ID raises InvalidTokenError."""
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await server_state.get_or_create_bot("0:secret")
+
+        assert "positive integer" in exc_info.value.message
+
+    async def test_valid_token_does_not_raise(self, server_state: ServerState) -> None:
+        """Test that valid tokens are accepted without errors."""
+        bot_state = await server_state.get_or_create_bot("123456789:ABC-DEF1234")
+        assert bot_state.bot_user.id == 123456789
+
+    async def test_exception_preserves_token(self, server_state: ServerState) -> None:
+        """Test that the exception stores the original token."""
+        token = "bad_token"
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await server_state.get_or_create_bot(token)
+
+        assert exc_info.value.token == token
