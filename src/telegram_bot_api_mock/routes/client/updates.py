@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from telegram_bot_api_mock.dependencies import get_state
-from telegram_bot_api_mock.models import Message, TelegramResponse, Update
+from telegram_bot_api_mock.models import TelegramResponse, Update
 from telegram_bot_api_mock.state import ServerState
 
 router = APIRouter(prefix="/client", tags=["client"])

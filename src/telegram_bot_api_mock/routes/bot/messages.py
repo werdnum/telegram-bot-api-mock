@@ -1,9 +1,10 @@
 """Bot API message routes."""
 
+import contextlib
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, Path
+from fastapi import APIRouter, Depends, Form, Path, Request
 from fastapi.responses import JSONResponse
 
 from telegram_bot_api_mock.dependencies import get_state
@@ -62,92 +63,86 @@ def parse_reply_parameters(reply_parameters: str | None) -> int | None:
     return None
 
 
-@router.post("/bot{token}/sendMessage")
+@router.post("/bot{token}/sendMessage", response_model=None)
 async def send_message(
     token: Annotated[str, Path()],
+    request: Request,
     state: Annotated[ServerState, Depends(get_state)],
-    chat_id: Annotated[int | str, Form()],
-    text: Annotated[str, Form()],
+    chat_id: Annotated[int | str | None, Form()] = None,
+    text: Annotated[str | None, Form()] = None,
     parse_mode: Annotated[str | None, Form()] = None,
     reply_to_message_id: Annotated[int | None, Form()] = None,
     reply_parameters: Annotated[str | None, Form()] = None,
     reply_markup: Annotated[str | None, Form()] = None,
-) -> TelegramResponse[Message]:
+) -> TelegramResponse[Message] | JSONResponse:
     """Send a message to a chat.
 
-    Args:
-        token: The bot token.
-        state: The server state.
-        chat_id: The chat ID to send the message to.
-        text: The message text.
-        parse_mode: Optional parse mode.
-        reply_to_message_id: Optional message ID to reply to (legacy).
-        reply_parameters: Optional JSON-encoded reply parameters (new API format).
-        reply_markup: Optional JSON-encoded reply markup.
-
-    Returns:
-        TelegramResponse containing the sent message.
+    Supports both Form data and JSON body.
     """
-    # Parse chat_id to int if it's a string
-    if isinstance(chat_id, str):
-        chat_id = int(chat_id)
-
-    # Parse reply_markup from JSON string if provided
+    actual_chat_id = chat_id
+    actual_text = text
+    actual_parse_mode = parse_mode
+    actual_reply_to_message_id = reply_to_message_id
+    actual_reply_parameters_input: str | dict | None = reply_parameters
+    actual_reply_markup_input = reply_markup
+    entities = None
     parsed_markup = None
-    if reply_markup:
-        parsed_markup = parse_reply_markup(reply_markup)
-        if parsed_markup is not None and not isinstance(parsed_markup, InlineKeyboardMarkup):
-            # For sendMessage, we accept any ReplyMarkup but only store InlineKeyboardMarkup
-            # since that's what the Message model supports
-            parsed_markup = None
+
+    # Handle JSON body
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            req_model = SendMessageRequest.model_validate(body)
+            actual_chat_id = req_model.chat_id
+            actual_text = req_model.text
+            actual_parse_mode = req_model.parse_mode
+            actual_reply_to_message_id = req_model.reply_to_message_id
+            actual_reply_parameters_input = req_model.reply_parameters
+            # Note: SendMessageRequest already parses reply_markup
+            if isinstance(req_model.reply_markup, InlineKeyboardMarkup):
+                parsed_markup = req_model.reply_markup
+            else:
+                parsed_markup = None
+            entities = req_model.entities
+            # For JSON, we use the parsed markup directly
+            actual_reply_markup_input = None
+        except Exception:
+            pass
+    else:
+        # Handle Form data parsing for markup
+        parsed_markup = None
+        if actual_reply_markup_input:
+            parsed_markup = parse_reply_markup(actual_reply_markup_input)
+            if parsed_markup is not None and not isinstance(parsed_markup, InlineKeyboardMarkup):
+                parsed_markup = None
+
+    if actual_chat_id is None or actual_text is None:
+        return error_response(400, "Bad Request: chat_id and text are required")
+
+    # Narrow types for typechecker
+    final_chat_id: int = int(actual_chat_id) if isinstance(actual_chat_id, str) else actual_chat_id
 
     # Handle both legacy reply_to_message_id and new reply_parameters format
-    actual_reply_to_message_id = reply_to_message_id
-    if actual_reply_to_message_id is None and reply_parameters:
-        actual_reply_to_message_id = parse_reply_parameters(reply_parameters)
+    if actual_reply_to_message_id is None and actual_reply_parameters_input:
+        if isinstance(actual_reply_parameters_input, str):
+            actual_reply_to_message_id = parse_reply_parameters(actual_reply_parameters_input)
+        elif (
+            isinstance(actual_reply_parameters_input, dict)
+            and "message_id" in actual_reply_parameters_input
+        ):
+            with contextlib.suppress(ValueError, TypeError):
+                actual_reply_to_message_id = int(actual_reply_parameters_input["message_id"])
 
     message = await message_service.create_message(
         state=state,
         bot_token=token,
-        chat_id=chat_id,
-        text=text,
-        parse_mode=parse_mode,
+        chat_id=final_chat_id,
+        text=actual_text,
+        parse_mode=actual_parse_mode,
         reply_to_message_id=actual_reply_to_message_id,
         reply_markup=parsed_markup,
-    )
-
-    return TelegramResponse(ok=True, result=message)
-
-
-@router.post("/bot{token}/sendMessage", include_in_schema=False)
-async def send_message_json(
-    token: Annotated[str, Path()],
-    state: Annotated[ServerState, Depends(get_state)],
-    request: SendMessageRequest,
-) -> TelegramResponse[Message]:
-    """Send a message to a chat (JSON body version).
-
-    This handler accepts JSON body instead of form data.
-    """
-    # Parse chat_id to int if it's a string
-    chat_id = request.chat_id
-    if isinstance(chat_id, str):
-        chat_id = int(chat_id)
-
-    # Extract InlineKeyboardMarkup if that's what was provided
-    reply_markup = None
-    if isinstance(request.reply_markup, InlineKeyboardMarkup):
-        reply_markup = request.reply_markup
-
-    message = await message_service.create_message(
-        state=state,
-        bot_token=token,
-        chat_id=chat_id,
-        text=request.text,
-        parse_mode=request.parse_mode,
-        reply_to_message_id=request.reply_to_message_id,
-        reply_markup=reply_markup,
-        entities=request.entities,
+        entities=entities,
     )
 
     return TelegramResponse(ok=True, result=message)
@@ -156,76 +151,50 @@ async def send_message_json(
 @router.post("/bot{token}/editMessageText", response_model=None)
 async def edit_message_text(
     token: Annotated[str, Path()],
+    request: Request,
     state: Annotated[ServerState, Depends(get_state)],
-    text: Annotated[str, Form()],
+    text: Annotated[str | None, Form()] = None,
     chat_id: Annotated[int | str | None, Form()] = None,
     message_id: Annotated[int | None, Form()] = None,
     reply_markup: Annotated[str | None, Form()] = None,
 ) -> TelegramResponse[Message | bool] | JSONResponse:
-    """Edit a message text.
-
-    Args:
-        token: The bot token.
-        state: The server state.
-        text: The new message text.
-        chat_id: The chat ID where the message is.
-        message_id: The message ID to edit.
-        reply_markup: Optional JSON-encoded inline keyboard markup.
-
-    Returns:
-        TelegramResponse containing the edited message or True.
-    """
-    if chat_id is None or message_id is None:
-        return error_response(400, "Bad Request: chat_id and message_id are required")
-
-    # Parse chat_id to int if it's a string
-    if isinstance(chat_id, str):
-        chat_id = int(chat_id)
-
-    # Parse reply_markup from JSON string if provided
+    """Edit a message text. Supports Form and JSON."""
+    actual_text = text
+    actual_chat_id = chat_id
+    actual_message_id = message_id
+    actual_reply_markup_input = reply_markup
     parsed_markup = None
-    if reply_markup:
-        markup = parse_reply_markup(reply_markup)
-        if isinstance(markup, InlineKeyboardMarkup):
-            parsed_markup = markup
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            req_model = EditMessageTextRequest.model_validate(body)
+            actual_text = req_model.text
+            actual_chat_id = req_model.chat_id
+            actual_message_id = req_model.message_id
+            parsed_markup = req_model.reply_markup
+        except Exception:
+            pass
+    else:
+        if actual_reply_markup_input:
+            markup = parse_reply_markup(actual_reply_markup_input)
+            if isinstance(markup, InlineKeyboardMarkup):
+                parsed_markup = markup
+
+    if actual_text is None or actual_chat_id is None or actual_message_id is None:
+        return error_response(400, "Bad Request: text, chat_id and message_id are required")
+
+    # Narrow types for typechecker
+    final_chat_id: int = int(actual_chat_id) if isinstance(actual_chat_id, str) else actual_chat_id
 
     message = await message_service.edit_message(
         state=state,
         bot_token=token,
-        chat_id=chat_id,
-        message_id=message_id,
-        text=text,
+        chat_id=final_chat_id,
+        message_id=actual_message_id,
+        text=actual_text,
         reply_markup=parsed_markup,
-    )
-
-    if message is None:
-        return error_response(400, "Bad Request: message not found")
-
-    return TelegramResponse(ok=True, result=message)
-
-
-@router.post("/bot{token}/editMessageText", include_in_schema=False, response_model=None)
-async def edit_message_text_json(
-    token: Annotated[str, Path()],
-    state: Annotated[ServerState, Depends(get_state)],
-    request: EditMessageTextRequest,
-) -> TelegramResponse[Message | bool] | JSONResponse:
-    """Edit a message text (JSON body version)."""
-    if request.chat_id is None or request.message_id is None:
-        return error_response(400, "Bad Request: chat_id and message_id are required")
-
-    # Parse chat_id to int if it's a string
-    chat_id = request.chat_id
-    if isinstance(chat_id, str):
-        chat_id = int(chat_id)
-
-    message = await message_service.edit_message(
-        state=state,
-        bot_token=token,
-        chat_id=chat_id,
-        message_id=request.message_id,
-        text=request.text,
-        reply_markup=request.reply_markup,
     )
 
     if message is None:
@@ -237,55 +206,36 @@ async def edit_message_text_json(
 @router.post("/bot{token}/deleteMessage", response_model=None)
 async def delete_message(
     token: Annotated[str, Path()],
+    request: Request,
     state: Annotated[ServerState, Depends(get_state)],
-    chat_id: Annotated[int | str, Form()],
-    message_id: Annotated[int, Form()],
+    chat_id: Annotated[int | str | None, Form()] = None,
+    message_id: Annotated[int | None, Form()] = None,
 ) -> TelegramResponse[bool] | JSONResponse:
-    """Delete a message.
+    """Delete a message. Supports Form and JSON."""
+    actual_chat_id = chat_id
+    actual_message_id = message_id
 
-    Args:
-        token: The bot token.
-        state: The server state.
-        chat_id: The chat ID where the message is.
-        message_id: The message ID to delete.
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            req_model = DeleteMessageRequest.model_validate(body)
+            actual_chat_id = req_model.chat_id
+            actual_message_id = req_model.message_id
+        except Exception:
+            pass
 
-    Returns:
-        TelegramResponse containing True on success.
-    """
-    # Parse chat_id to int if it's a string
-    if isinstance(chat_id, str):
-        chat_id = int(chat_id)
+    if actual_chat_id is None or actual_message_id is None:
+        return error_response(400, "Bad Request: chat_id and message_id are required")
+
+    # Narrow types for typechecker
+    final_chat_id: int = int(actual_chat_id) if isinstance(actual_chat_id, str) else actual_chat_id
 
     result = await message_service.delete_message(
         state=state,
         bot_token=token,
-        chat_id=chat_id,
-        message_id=message_id,
-    )
-
-    if not result:
-        return error_response(400, "Bad Request: message not found")
-
-    return TelegramResponse(ok=True, result=True)
-
-
-@router.post("/bot{token}/deleteMessage", include_in_schema=False, response_model=None)
-async def delete_message_json(
-    token: Annotated[str, Path()],
-    state: Annotated[ServerState, Depends(get_state)],
-    request: DeleteMessageRequest,
-) -> TelegramResponse[bool] | JSONResponse:
-    """Delete a message (JSON body version)."""
-    # Parse chat_id to int if it's a string
-    chat_id = request.chat_id
-    if isinstance(chat_id, str):
-        chat_id = int(chat_id)
-
-    result = await message_service.delete_message(
-        state=state,
-        bot_token=token,
-        chat_id=chat_id,
-        message_id=request.message_id,
+        chat_id=final_chat_id,
+        message_id=actual_message_id,
     )
 
     if not result:

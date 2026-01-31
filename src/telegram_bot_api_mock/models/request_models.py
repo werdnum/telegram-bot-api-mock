@@ -58,6 +58,7 @@ class SendMessageRequest(BaseModel):
     disable_notification: bool | None = None
     protect_content: bool | None = None
     reply_to_message_id: int | None = None
+    reply_parameters: dict[str, Any] | None = None
     allow_sending_without_reply: bool | None = None
     reply_markup: (
         InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply | None
@@ -147,6 +148,14 @@ class SendChatActionRequest(BaseModel):
 
     chat_id: int | str
     action: str
+
+
+class GetFileRequest(BaseModel):
+    """Request model for getFile endpoint."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    file_id: str
 
 
 class GetUpdatesRequest(BaseModel):

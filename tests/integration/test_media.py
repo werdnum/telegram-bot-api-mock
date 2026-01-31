@@ -217,16 +217,14 @@ class TestSendChatAction:
 
 
 class TestGetFile:
-    """Tests for the getFile endpoint.
-
-    Note: PTB sends getFile requests as JSON POST, but the mock server currently
-    expects query parameters. We use the raw client for these tests to match
-    the current server implementation.
-    """
+    """Tests for the getFile endpoint."""
 
     @pytest.mark.asyncio
-    async def test_get_file_returns_file_info(self, client: TestClient, bot: Bot):
-        """Test that getFile returns file information for a stored file."""
+    async def test_get_file_returns_file_info(self, bot: Bot):
+        """Test that getFile returns file information for a stored file.
+
+        This test uses PTB's get_file method which sends a POST request with JSON body.
+        """
         # First, send a document to store a file using PTB
         doc_content = b"Test document content"
         doc_data = BytesIO(doc_content)
@@ -236,19 +234,13 @@ class TestGetFile:
         assert message.document is not None
         file_id = message.document.file_id
 
-        # Now get the file info using raw client
-        response = client.get(
-            f"/bot{TEST_TOKEN}/getFile",
-            params={"file_id": file_id},
-        )
+        # Now get the file info using PTB
+        telegram_file = await bot.get_file(file_id=file_id)
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["ok"] is True
-        assert data["result"]["file_id"] == file_id
-        assert data["result"]["file_unique_id"] is not None
-        assert data["result"]["file_size"] == len(doc_content)
-        assert data["result"]["file_path"] is not None
+        assert telegram_file.file_id == file_id
+        assert telegram_file.file_unique_id is not None
+        assert telegram_file.file_size == len(doc_content)
+        assert telegram_file.file_path is not None
 
     @pytest.mark.asyncio
     async def test_download_via_file_path(self, client: TestClient, bot: Bot):
@@ -258,6 +250,7 @@ class TestGetFile:
         doc_data = BytesIO(doc_content)
         doc_data.name = "repro.txt"
         message = await bot.send_document(chat_id=100, document=doc_data)
+        assert message.document is not None
         file_id = message.document.file_id
 
         # Get the file path

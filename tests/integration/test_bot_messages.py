@@ -1,6 +1,7 @@
 """Integration tests for bot message API endpoints using python-telegram-bot."""
 
 import pytest
+from fastapi.testclient import TestClient
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.error import BadRequest
 
@@ -63,6 +64,21 @@ class TestSendMessage:
 
         assert message.reply_markup is not None
         assert len(message.reply_markup.inline_keyboard) == 2
+
+    @pytest.mark.asyncio
+    async def test_send_message_json_body(self, client: TestClient):
+        """Test that sendMessage works with JSON body (raw client)."""
+        from tests.conftest import TEST_TOKEN
+
+        response = client.post(
+            f"/bot{TEST_TOKEN}/sendMessage",
+            json={"chat_id": 100, "text": "Hello JSON"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"]["text"] == "Hello JSON"
 
 
 class TestEditMessageText:
