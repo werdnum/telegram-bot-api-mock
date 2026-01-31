@@ -85,6 +85,7 @@ async def send_message(
     actual_reply_parameters = reply_parameters
     actual_reply_markup_input = reply_markup
     entities = None
+    parsed_markup = None
 
     # Handle JSON body
     content_type = request.headers.get("content-type", "")

@@ -34,7 +34,9 @@ async def get_updates(
                 req_model = GetUpdatesRequest.model_validate(body)
                 actual_offset = req_model.offset if req_model.offset is not None else actual_offset
                 actual_limit = req_model.limit if req_model.limit is not None else actual_limit
-                actual_timeout = req_model.timeout if req_model.timeout is not None else actual_timeout
+                actual_timeout = (
+                    req_model.timeout if req_model.timeout is not None else actual_timeout
+                )
             except Exception:
                 pass
 

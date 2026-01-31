@@ -546,7 +546,10 @@ async def get_file(
                 actual_file_id = req_model.file_id
             except Exception:
                 pass
-        elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        elif (
+            "application/x-www-form-urlencoded" in content_type
+            or "multipart/form-data" in content_type
+        ):
             try:
                 form = await request.form()
                 actual_file_id = form.get("file_id")
