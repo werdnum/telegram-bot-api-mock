@@ -542,7 +542,8 @@ async def get_file(
         if "application/json" in content_type:
             try:
                 body = await request.json()
-                actual_file_id = body.get("file_id")
+                req_model = GetFileRequest.model_validate(body)
+                actual_file_id = req_model.file_id
             except Exception:
                 pass
         elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:

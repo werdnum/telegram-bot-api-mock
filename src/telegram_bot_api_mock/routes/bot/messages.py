@@ -118,11 +118,7 @@ async def send_message(
         return error_response(400, "Bad Request: chat_id and text are required")
 
     # Narrow types for typechecker
-    final_chat_id: int
-    if isinstance(actual_chat_id, str):
-        final_chat_id = int(actual_chat_id)
-    else:
-        final_chat_id = actual_chat_id
+    final_chat_id: int = int(actual_chat_id) if isinstance(actual_chat_id, str) else actual_chat_id
 
     # Handle both legacy reply_to_message_id and new reply_parameters format
     if actual_reply_to_message_id is None and actual_reply_parameters:
@@ -180,11 +176,7 @@ async def edit_message_text(
         return error_response(400, "Bad Request: text, chat_id and message_id are required")
 
     # Narrow types for typechecker
-    final_chat_id: int
-    if isinstance(actual_chat_id, str):
-        final_chat_id = int(actual_chat_id)
-    else:
-        final_chat_id = actual_chat_id
+    final_chat_id: int = int(actual_chat_id) if isinstance(actual_chat_id, str) else actual_chat_id
 
     message = await message_service.edit_message(
         state=state,
@@ -227,11 +219,7 @@ async def delete_message(
         return error_response(400, "Bad Request: chat_id and message_id are required")
 
     # Narrow types for typechecker
-    final_chat_id: int
-    if isinstance(actual_chat_id, str):
-        final_chat_id = int(actual_chat_id)
-    else:
-        final_chat_id = actual_chat_id
+    final_chat_id: int = int(actual_chat_id) if isinstance(actual_chat_id, str) else actual_chat_id
 
     result = await message_service.delete_message(
         state=state,
