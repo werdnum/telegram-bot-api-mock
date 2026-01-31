@@ -205,9 +205,10 @@ class TestClientGetUpdates:
         data = response.json()
         assert data["ok"] is True
         assert len(data["result"]) == 1
-        assert data["result"][0]["text"] == "Hello, user!"
+        # Messages should be wrapped in an Update object
+        assert data["result"][0]["message"]["text"] == "Hello, user!"
         # Message should be from the bot
-        assert data["result"][0]["from"]["is_bot"] is True
+        assert data["result"][0]["message"]["from"]["is_bot"] is True
 
     def test_get_updates_excludes_user_messages(self, client: TestClient):
         """Test that getUpdates does not return user messages."""
@@ -238,7 +239,7 @@ class TestClientGetUpdates:
         assert data["ok"] is True
         # Should only contain the bot's message
         assert len(data["result"]) == 1
-        assert data["result"][0]["text"] == "Hello from bot!"
+        assert data["result"][0]["message"]["text"] == "Hello from bot!"
 
     def test_get_updates_empty_for_different_chat(self, client: TestClient):
         """Test that getUpdates returns empty for different chat."""

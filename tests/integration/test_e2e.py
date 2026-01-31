@@ -58,7 +58,7 @@ class TestE2EPolling:
         assert user_check.status_code == 200
         bot_messages = user_check.json()["result"]
         assert len(bot_messages) == 1
-        assert bot_messages[0]["text"] == "Hello, user! How can I help you?"
+        assert bot_messages[0]["message"]["text"] == "Hello, user! How can I help you?"
 
     @pytest.mark.asyncio
     async def test_user_sends_command_bot_responds_with_inline_keyboard(
@@ -104,9 +104,9 @@ class TestE2EPolling:
         ).json()["result"]
 
         assert len(bot_messages) == 1
-        assert bot_messages[0]["text"] == "Welcome! Please choose an option:"
-        assert bot_messages[0]["reply_markup"] is not None
-        assert len(bot_messages[0]["reply_markup"]["inline_keyboard"]) == 2
+        assert bot_messages[0]["message"]["text"] == "Welcome! Please choose an option:"
+        assert bot_messages[0]["message"]["reply_markup"] is not None
+        assert len(bot_messages[0]["message"]["reply_markup"]["inline_keyboard"]) == 2
 
     @pytest.mark.asyncio
     async def test_user_clicks_callback_button_bot_handles(self, client: TestClient, bot: Bot):
@@ -199,14 +199,14 @@ class TestE2EPolling:
             params={"bot_token": TEST_TOKEN, "chat_id": 100},
         ).json()["result"]
         assert len(user1_messages) == 1
-        assert user1_messages[0]["text"] == "Hello, User One!"
+        assert user1_messages[0]["message"]["text"] == "Hello, User One!"
 
         user2_messages = client.get(
             "/client/getUpdates",
             params={"bot_token": TEST_TOKEN, "chat_id": 200},
         ).json()["result"]
         assert len(user2_messages) == 1
-        assert user2_messages[0]["text"] == "Hello, User Two!"
+        assert user2_messages[0]["message"]["text"] == "Hello, User Two!"
 
 
 class TestE2EWebhook:
@@ -403,7 +403,7 @@ class TestE2EWebhook:
         ).json()["result"]
 
         assert len(bot_messages) == 1
-        assert bot_messages[0]["text"] == "Hi there!"
+        assert bot_messages[0]["message"]["text"] == "Hi there!"
 
 
 class TestCallbackFlow:
