@@ -5,6 +5,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Path, UploadFile
+from fastapi.responses import Response
 
 from telegram_bot_api_mock.dependencies import get_state
 from telegram_bot_api_mock.models import (
@@ -523,3 +524,52 @@ async def get_file(
     )
 
     return TelegramResponse(ok=True, result=telegram_file)
+
+
+@router.get("/file/bot{token}/{file_path:path}")
+async def download_file(
+    token: Annotated[str, Path()],
+    file_path: Annotated[str, Path()],
+    state: Annotated[ServerState, Depends(get_state)],
+) -> Response:
+    """Download a file by its path.
+
+    This endpoint follows the standard Telegram Bot API format:
+    /file/bot<token>/<file_path>
+
+    Args:
+        token: The bot token.
+        file_path: The file path returned by getFile.
+        state: The server state.
+
+    Returns:
+        The file content with appropriate content-type header.
+    """
+    # Extract file_id from the file_path
+    # file_path format: files/{token}/{file_id}/{filename}
+    parts = file_path.split("/")
+    if len(parts) < 3 or parts[0] != "files" or parts[1] != token:
+        return Response(
+            content=b"Invalid file path",
+            status_code=400,
+            media_type="text/plain",
+        )
+
+    file_id = parts[2]
+
+    # Try to get the file from storage
+    file_data = media_service.get_media(state, file_id)
+
+    if file_data is None:
+        return Response(
+            content=b"File not found",
+            status_code=404,
+            media_type="text/plain",
+        )
+
+    content, _filename, mime_type = file_data
+
+    return Response(
+        content=content,
+        media_type=mime_type,
+    )
