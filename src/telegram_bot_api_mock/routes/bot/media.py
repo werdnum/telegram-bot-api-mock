@@ -552,7 +552,7 @@ async def get_file(
             except Exception:
                 pass
 
-    if not actual_file_id:
+    if not actual_file_id or not isinstance(actual_file_id, str):
         return TelegramResponse(
             ok=False,
             error_code=400,

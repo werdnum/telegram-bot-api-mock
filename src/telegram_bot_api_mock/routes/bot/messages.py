@@ -117,9 +117,12 @@ async def send_message(
     if actual_chat_id is None or actual_text is None:
         return error_response(400, "Bad Request: chat_id and text are required")
 
-    # Parse chat_id to int if it's a string
+    # Narrow types for typechecker
+    final_chat_id: int
     if isinstance(actual_chat_id, str):
-        actual_chat_id = int(actual_chat_id)
+        final_chat_id = int(actual_chat_id)
+    else:
+        final_chat_id = actual_chat_id
 
     # Handle both legacy reply_to_message_id and new reply_parameters format
     if actual_reply_to_message_id is None and actual_reply_parameters:
@@ -128,7 +131,7 @@ async def send_message(
     message = await message_service.create_message(
         state=state,
         bot_token=token,
-        chat_id=actual_chat_id,
+        chat_id=final_chat_id,
         text=actual_text,
         parse_mode=actual_parse_mode,
         reply_to_message_id=actual_reply_to_message_id,
@@ -173,17 +176,20 @@ async def edit_message_text(
             if isinstance(markup, InlineKeyboardMarkup):
                 parsed_markup = markup
 
-    if actual_text is None or (actual_chat_id is None and actual_message_id is None):
+    if actual_text is None or actual_chat_id is None or actual_message_id is None:
         return error_response(400, "Bad Request: text, chat_id and message_id are required")
 
-    # Parse chat_id to int if it's a string
+    # Narrow types for typechecker
+    final_chat_id: int
     if isinstance(actual_chat_id, str):
-        actual_chat_id = int(actual_chat_id)
+        final_chat_id = int(actual_chat_id)
+    else:
+        final_chat_id = actual_chat_id
 
     message = await message_service.edit_message(
         state=state,
         bot_token=token,
-        chat_id=actual_chat_id,
+        chat_id=final_chat_id,
         message_id=actual_message_id,
         text=actual_text,
         reply_markup=parsed_markup,
@@ -220,14 +226,17 @@ async def delete_message(
     if actual_chat_id is None or actual_message_id is None:
         return error_response(400, "Bad Request: chat_id and message_id are required")
 
-    # Parse chat_id to int if it's a string
+    # Narrow types for typechecker
+    final_chat_id: int
     if isinstance(actual_chat_id, str):
-        actual_chat_id = int(actual_chat_id)
+        final_chat_id = int(actual_chat_id)
+    else:
+        final_chat_id = actual_chat_id
 
     result = await message_service.delete_message(
         state=state,
         bot_token=token,
-        chat_id=actual_chat_id,
+        chat_id=final_chat_id,
         message_id=actual_message_id,
     )
 
