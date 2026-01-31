@@ -3,9 +3,11 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Path, Request
+from fastapi.responses import JSONResponse
 
 from telegram_bot_api_mock.dependencies import get_state
 from telegram_bot_api_mock.models import SendChatActionRequest, TelegramResponse
+from telegram_bot_api_mock.routes.bot.request_parsing import is_json_content_type, parse_json_body
 from telegram_bot_api_mock.state import ServerState
 
 router = APIRouter()
@@ -33,27 +35,26 @@ def _parse_chat_id(chat_id: int | str) -> int:
     return chat_id
 
 
-@router.post("/bot{token}/sendChatAction")
+@router.post("/bot{token}/sendChatAction", response_model=None)
 async def send_chat_action(
     token: Annotated[str, Path()],
     request: Request,
     state: Annotated[ServerState, Depends(get_state)],
     chat_id: Annotated[int | str | None, Form()] = None,
     action: Annotated[str | None, Form()] = None,
-) -> TelegramResponse[bool]:
+) -> TelegramResponse[bool] | JSONResponse:
     """Send a chat action to indicate bot activity. Supports Form and JSON."""
     actual_chat_id = chat_id
     actual_action = action
 
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            body = await request.json()
-            req_model = SendChatActionRequest.model_validate(body)
-            actual_chat_id = req_model.chat_id
-            actual_action = req_model.action
-        except Exception:
-            pass
+    if is_json_content_type(request):
+        parsed = await parse_json_body(request, SendChatActionRequest)
+        if parsed.error:
+            return parsed.error
+        req_model = parsed.model
+        assert req_model is not None  # Type narrowing
+        actual_chat_id = req_model.chat_id
+        actual_action = req_model.action
 
     if actual_chat_id is None or actual_action is None:
         return TelegramResponse(

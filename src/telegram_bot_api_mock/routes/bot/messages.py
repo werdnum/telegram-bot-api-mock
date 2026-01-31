@@ -17,30 +17,15 @@ from telegram_bot_api_mock.models import (
     TelegramResponse,
 )
 from telegram_bot_api_mock.models.request_models import parse_reply_markup
+from telegram_bot_api_mock.routes.bot.request_parsing import (
+    error_response,
+    is_json_content_type,
+    parse_json_body,
+)
 from telegram_bot_api_mock.services import message_service
 from telegram_bot_api_mock.state import ServerState
 
 router = APIRouter()
-
-
-def error_response(error_code: int, description: str) -> JSONResponse:
-    """Create an error response with the appropriate HTTP status code.
-
-    Args:
-        error_code: The Telegram error code (also used as HTTP status code).
-        description: The error description.
-
-    Returns:
-        JSONResponse with the error details and appropriate HTTP status code.
-    """
-    return JSONResponse(
-        status_code=error_code,
-        content={
-            "ok": False,
-            "error_code": error_code,
-            "description": description,
-        },
-    )
 
 
 def parse_reply_parameters(reply_parameters: str | None) -> int | None:
@@ -89,26 +74,25 @@ async def send_message(
     parsed_markup = None
 
     # Handle JSON body
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            body = await request.json()
-            req_model = SendMessageRequest.model_validate(body)
-            actual_chat_id = req_model.chat_id
-            actual_text = req_model.text
-            actual_parse_mode = req_model.parse_mode
-            actual_reply_to_message_id = req_model.reply_to_message_id
-            actual_reply_parameters_input = req_model.reply_parameters
-            # Note: SendMessageRequest already parses reply_markup
-            if isinstance(req_model.reply_markup, InlineKeyboardMarkup):
-                parsed_markup = req_model.reply_markup
-            else:
-                parsed_markup = None
-            entities = req_model.entities
-            # For JSON, we use the parsed markup directly
-            actual_reply_markup_input = None
-        except Exception:
-            pass
+    if is_json_content_type(request):
+        parsed = await parse_json_body(request, SendMessageRequest)
+        if parsed.error:
+            return parsed.error
+        req_model = parsed.model
+        assert req_model is not None  # Type narrowing
+        actual_chat_id = req_model.chat_id
+        actual_text = req_model.text
+        actual_parse_mode = req_model.parse_mode
+        actual_reply_to_message_id = req_model.reply_to_message_id
+        actual_reply_parameters_input = req_model.reply_parameters
+        # Note: SendMessageRequest already parses reply_markup
+        if isinstance(req_model.reply_markup, InlineKeyboardMarkup):
+            parsed_markup = req_model.reply_markup
+        else:
+            parsed_markup = None
+        entities = req_model.entities
+        # For JSON, we use the parsed markup directly
+        actual_reply_markup_input = None
     else:
         # Handle Form data parsing for markup
         parsed_markup = None
@@ -165,17 +149,16 @@ async def edit_message_text(
     actual_reply_markup_input = reply_markup
     parsed_markup = None
 
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            body = await request.json()
-            req_model = EditMessageTextRequest.model_validate(body)
-            actual_text = req_model.text
-            actual_chat_id = req_model.chat_id
-            actual_message_id = req_model.message_id
-            parsed_markup = req_model.reply_markup
-        except Exception:
-            pass
+    if is_json_content_type(request):
+        parsed = await parse_json_body(request, EditMessageTextRequest)
+        if parsed.error:
+            return parsed.error
+        req_model = parsed.model
+        assert req_model is not None  # Type narrowing
+        actual_text = req_model.text
+        actual_chat_id = req_model.chat_id
+        actual_message_id = req_model.message_id
+        parsed_markup = req_model.reply_markup
     else:
         if actual_reply_markup_input:
             markup = parse_reply_markup(actual_reply_markup_input)
@@ -215,15 +198,14 @@ async def delete_message(
     actual_chat_id = chat_id
     actual_message_id = message_id
 
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        try:
-            body = await request.json()
-            req_model = DeleteMessageRequest.model_validate(body)
-            actual_chat_id = req_model.chat_id
-            actual_message_id = req_model.message_id
-        except Exception:
-            pass
+    if is_json_content_type(request):
+        parsed = await parse_json_body(request, DeleteMessageRequest)
+        if parsed.error:
+            return parsed.error
+        req_model = parsed.model
+        assert req_model is not None  # Type narrowing
+        actual_chat_id = req_model.chat_id
+        actual_message_id = req_model.message_id
 
     if actual_chat_id is None or actual_message_id is None:
         return error_response(400, "Bad Request: chat_id and message_id are required")

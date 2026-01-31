@@ -175,3 +175,162 @@ class TestGetUpdates:
 
         # PTB returns a tuple for empty lists
         assert len(updates) == 0
+
+
+class TestJSONBodySupport:
+    """Tests for JSON body support and error handling across endpoints."""
+
+    def test_send_message_json_body_invalid_json(self, client: TestClient):
+        """Test that sendMessage returns proper error for invalid JSON."""
+        from tests.conftest import TEST_TOKEN
+
+        response = client.post(
+            f"/bot{TEST_TOKEN}/sendMessage",
+            content="{invalid json",
+            headers={"content-type": "application/json"},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["ok"] is False
+        assert "invalid JSON" in data["description"]
+
+    def test_send_message_json_body_validation_error(self, client: TestClient):
+        """Test that sendMessage returns proper error for validation failures."""
+        from tests.conftest import TEST_TOKEN
+
+        # Missing required 'text' field
+        response = client.post(
+            f"/bot{TEST_TOKEN}/sendMessage",
+            json={"chat_id": 100},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["ok"] is False
+        assert "validation error" in data["description"]
+
+    def test_edit_message_text_json_body(self, client: TestClient):
+        """Test that editMessageText works with JSON body."""
+        from tests.conftest import TEST_TOKEN
+
+        # First create a message
+        client.post(
+            f"/bot{TEST_TOKEN}/sendMessage",
+            json={"chat_id": 100, "text": "Original"},
+        )
+
+        # Now edit it with JSON body
+        response = client.post(
+            f"/bot{TEST_TOKEN}/editMessageText",
+            json={"chat_id": 100, "message_id": 1, "text": "Edited via JSON"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"]["text"] == "Edited via JSON"
+
+    def test_delete_message_json_body(self, client: TestClient):
+        """Test that deleteMessage works with JSON body."""
+        from tests.conftest import TEST_TOKEN
+
+        # First create a message
+        client.post(
+            f"/bot{TEST_TOKEN}/sendMessage",
+            json={"chat_id": 100, "text": "To be deleted"},
+        )
+
+        # Delete it with JSON body
+        response = client.post(
+            f"/bot{TEST_TOKEN}/deleteMessage",
+            json={"chat_id": 100, "message_id": 1},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"] is True
+
+    def test_get_updates_json_body(self, client: TestClient):
+        """Test that getUpdates works with JSON body."""
+        from tests.conftest import TEST_TOKEN
+
+        response = client.post(
+            f"/bot{TEST_TOKEN}/getUpdates",
+            json={"offset": 0, "limit": 10, "timeout": 0},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+        assert data["result"] == []
+
+    def test_set_webhook_json_body(self, client: TestClient):
+        """Test that setWebhook works with JSON body."""
+        from tests.conftest import TEST_TOKEN
+
+        response = client.post(
+            f"/bot{TEST_TOKEN}/setWebhook",
+            json={"url": "https://example.com/webhook"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+    def test_delete_webhook_json_body(self, client: TestClient):
+        """Test that deleteWebhook works with JSON body."""
+        from tests.conftest import TEST_TOKEN
+
+        response = client.post(
+            f"/bot{TEST_TOKEN}/deleteWebhook",
+            json={"drop_pending_updates": True},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+    def test_send_chat_action_json_body(self, client: TestClient):
+        """Test that sendChatAction works with JSON body."""
+        from tests.conftest import TEST_TOKEN
+
+        response = client.post(
+            f"/bot{TEST_TOKEN}/sendChatAction",
+            json={"chat_id": 100, "action": "typing"},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ok"] is True
+
+    def test_send_chat_action_json_body_invalid_json(self, client: TestClient):
+        """Test that sendChatAction returns proper error for invalid JSON."""
+        from tests.conftest import TEST_TOKEN
+
+        response = client.post(
+            f"/bot{TEST_TOKEN}/sendChatAction",
+            content="{not valid json}",
+            headers={"content-type": "application/json"},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["ok"] is False
+        assert "invalid JSON" in data["description"]
+
+    def test_send_chat_action_json_body_validation_error(self, client: TestClient):
+        """Test that sendChatAction returns proper error for validation failures."""
+        from tests.conftest import TEST_TOKEN
+
+        # Missing required 'action' field
+        response = client.post(
+            f"/bot{TEST_TOKEN}/sendChatAction",
+            json={"chat_id": 100},
+        )
+
+        assert response.status_code == 400
+        data = response.json()
+        assert data["ok"] is False
+        assert "validation error" in data["description"]
