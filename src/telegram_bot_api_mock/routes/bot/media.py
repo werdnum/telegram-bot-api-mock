@@ -5,7 +5,7 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Path, Query, Request, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from telegram_bot_api_mock.dependencies import get_state
 from telegram_bot_api_mock.models import (
@@ -16,6 +16,11 @@ from telegram_bot_api_mock.models import (
 )
 from telegram_bot_api_mock.models.media_types import File as TelegramFile
 from telegram_bot_api_mock.models.request_models import GetFileRequest, parse_reply_markup
+from telegram_bot_api_mock.routes.bot.request_parsing import (
+    error_response,
+    is_json_content_type,
+    parse_json_body,
+)
 from telegram_bot_api_mock.services import media_service
 from telegram_bot_api_mock.state import ServerState
 
@@ -515,14 +520,14 @@ async def _get_file_impl(
     return TelegramResponse(ok=True, result=telegram_file)
 
 
-@router.get("/bot{token}/getFile")
-@router.post("/bot{token}/getFile")
+@router.get("/bot{token}/getFile", response_model=None)
+@router.post("/bot{token}/getFile", response_model=None)
 async def get_file(
     token: Annotated[str, Path()],
     request: Request,
     state: Annotated[ServerState, Depends(get_state)],
     file_id: Annotated[str | None, Query()] = None,
-) -> TelegramResponse[TelegramFile]:
+) -> TelegramResponse[TelegramFile] | JSONResponse:
     """Get information about a file and prepare it for downloading.
 
     Args:
@@ -538,30 +543,26 @@ async def get_file(
 
     # If not in query, try to get from body (JSON or Form)
     if not actual_file_id and request.method == "POST":
-        content_type = request.headers.get("content-type", "")
-        if "application/json" in content_type:
-            try:
-                body = await request.json()
-                req_model = GetFileRequest.model_validate(body)
-                actual_file_id = req_model.file_id
-            except Exception:
-                pass
-        elif (
-            "application/x-www-form-urlencoded" in content_type
-            or "multipart/form-data" in content_type
-        ):
-            try:
+        if is_json_content_type(request):
+            parsed = await parse_json_body(request, GetFileRequest)
+            if parsed.error:
+                return parsed.error
+            req_model = parsed.model
+            assert req_model is not None  # Type narrowing
+            actual_file_id = req_model.file_id
+        else:
+            content_type = request.headers.get("content-type", "")
+            if (
+                "application/x-www-form-urlencoded" in content_type
+                or "multipart/form-data" in content_type
+            ):
                 form = await request.form()
-                actual_file_id = form.get("file_id")
-            except Exception:
-                pass
+                form_file_id = form.get("file_id")
+                if isinstance(form_file_id, str):
+                    actual_file_id = form_file_id
 
     if not actual_file_id or not isinstance(actual_file_id, str):
-        return TelegramResponse(
-            ok=False,
-            error_code=400,
-            description="Bad Request: file_id is required",
-        )
+        return error_response(400, "Bad Request: file_id is required")
 
     return await _get_file_impl(token, state, actual_file_id)
 
