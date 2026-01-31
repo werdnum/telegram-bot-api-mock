@@ -1,0 +1,8 @@
+{
+  "enabledPlugins": {
+    "bash-guard@werdnum-plugins": true,
+    "guardian@werdnum-plugins": true,
+    "workspace-reuse@werdnum-plugins": true,
+    "format-and-lint@werdnum-plugins": true
+  }
+}
